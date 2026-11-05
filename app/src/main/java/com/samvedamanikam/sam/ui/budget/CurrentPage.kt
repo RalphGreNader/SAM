@@ -51,7 +51,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.samvedamanikam.sam.data.ApiException
+import com.samvedamanikam.sam.data.OutboxOp
 import com.samvedamanikam.sam.data.QuickEntryParser
 import com.samvedamanikam.sam.data.SamRepository
 import com.samvedamanikam.sam.data.api.BudgetPageDetail
@@ -80,7 +82,8 @@ sealed interface BudgetEvent {
     data class Deleted(val expense: Expense) : BudgetEvent
 }
 
-class CurrentPageViewModel(private val repo: SamRepository) : ViewModel() {
+/** @param enqueue queues an op in the outbox (used when an add can't reach the server). */
+class CurrentPageViewModel(private val repo: SamRepository, private val enqueue: (OutboxOp) -> Unit) : ViewModel() {
     private val cached = repo.cachedCurrentPage()
     var detail by mutableStateOf(cached?.detail)
         private set
@@ -157,13 +160,45 @@ class CurrentPageViewModel(private val repo: SamRepository) : ViewModel() {
             _events.trySend(BudgetEvent.Message("Type the amount, then what it was for, e.g. \"60 gym\"."))
             return
         }
-        mutate {
-            // No category: the server uses merchant memory, then keyword rules, then "Other"
-            repo.addExpense(ExpenseSaveRequest(amount = entry.amount.toDouble(), description = entry.description, categoryId = selectedCategoryId))
-            input = ""
-            selectedCategoryId = null
-            merchants = emptyList()
+        if (saving) return
+        saving = true
+        val amount = entry.amount.toDouble()
+        val categoryId = selectedCategoryId
+        viewModelScope.launch {
+            try {
+                // No category: the server uses merchant memory, then keyword rules, then "Other"
+                repo.addExpense(ExpenseSaveRequest(amount = amount, description = entry.description, categoryId = categoryId))
+                clearInput()
+                runCatching { detail = repo.currentPage() }
+            } catch (e: ApiException) {
+                if (e.notSent) {
+                    // Offline: queue it like a widget add; it shows as "(syncing)" and is sent automatically
+                    enqueue(
+                        OutboxOp.AddExpense(
+                            id = OutboxOp.newId(),
+                            createdAtMs = System.currentTimeMillis(),
+                            amount = amount,
+                            description = entry.description,
+                            categoryId = categoryId,
+                            spentDate = Fmt.iso(LocalDate.now()),
+                            source = "APP"
+                        )
+                    )
+                    clearInput()
+                    _events.trySend(BudgetEvent.Message("You're offline. Saved on this phone; it syncs automatically."))
+                } else {
+                    _events.trySend(BudgetEvent.Message(e.message ?: "Something went wrong."))
+                }
+            } finally {
+                saving = false
+            }
         }
+    }
+
+    private fun clearInput() {
+        input = ""
+        selectedCategoryId = null
+        merchants = emptyList()
     }
 
     fun update(expense: Expense, amount: Double, description: String, categoryId: Int, date: LocalDate) = mutate {
@@ -215,12 +250,16 @@ class CurrentPageViewModel(private val repo: SamRepository) : ViewModel() {
 @Composable
 fun CurrentPageTab() {
     val container = appContainer()
-    val vm: CurrentPageViewModel = viewModel { CurrentPageViewModel(container.repository()) }
+    val vm: CurrentPageViewModel = viewModel { CurrentPageViewModel(container.repository(), enqueue = { container.enqueue(listOf(it)) }) }
     val snackbar = LocalSnackbar.current
     var editing by remember { mutableStateOf<Expense?>(null) }
     var newPageOpen by rememberSaveable { mutableStateOf(false) }
 
-    LaunchedEffect(Unit) { vm.refresh() }
+    // Offline/widget adds waiting in the outbox: listed as "(syncing)"; the page reloads once they've been sent
+    val outbox by container.outbox.state.collectAsStateWithLifecycle()
+    val pending = outbox.pending.filterIsInstance<OutboxOp.AddExpense>()
+    val categoryNames = vm.categories.associate { it.id to it.name }
+    LaunchedEffect(pending.size) { vm.refresh() }
     LaunchedEffect(vm) {
         vm.events.collect { event ->
             when (event) {
@@ -236,9 +275,17 @@ fun CurrentPageTab() {
     val detail = vm.detail
     Column(Modifier.fillMaxSize().imePadding()) {
         MessageBanner(vm.message, Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+        if (pending.isNotEmpty()) {
+            Text(
+                "${pending.size} item${if (pending.size == 1) "" else "s"} waiting to sync",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+            )
+        }
         PullToRefreshBox(isRefreshing = vm.loading, onRefresh = vm::refresh, modifier = Modifier.weight(1f)) {
             when {
-                detail != null -> PageList(detail, onEdit = { editing = it }, onNewPage = { newPageOpen = true })
+                detail != null -> PageList(detail, pending, categoryNames, onEdit = { editing = it }, onNewPage = { newPageOpen = true })
                 vm.known -> EmptyState(
                     title = "No budget page",
                     body = "Start a page with your budget amount. Every item you add is subtracted from it.",
@@ -279,8 +326,15 @@ fun CurrentPageTab() {
 
 /** The page laid out like the OneNote original: title + amount, items, then what's left. */
 @Composable
-private fun PageList(detail: BudgetPageDetail, onEdit: (Expense) -> Unit, onNewPage: () -> Unit) {
+private fun PageList(
+    detail: BudgetPageDetail,
+    pending: List<OutboxOp.AddExpense>,
+    categoryNames: Map<Int, String>,
+    onEdit: (Expense) -> Unit,
+    onNewPage: () -> Unit
+) {
     val page = detail.page
+    val left = page.left - pending.sumOf { it.amount }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp)) {
         item {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -288,14 +342,14 @@ private fun PageList(detail: BudgetPageDetail, onEdit: (Expense) -> Unit, onNewP
                 Text(Fmt.money(page.amount), style = MaterialTheme.typography.titleLarge)
             }
             Text(
-                "Since ${Fmt.mediumDate(page.startDate)} · ${page.itemCount} items",
+                "Since ${Fmt.mediumDate(page.startDate)} · ${page.itemCount + pending.size} items",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(Modifier.height(8.dp))
             HorizontalDivider()
         }
-        if (detail.items.isEmpty()) item {
+        if (detail.items.isEmpty() && pending.isEmpty()) item {
             Text(
                 "No items yet. Add one below, e.g. \"60 gym\".",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -303,15 +357,16 @@ private fun PageList(detail: BudgetPageDetail, onEdit: (Expense) -> Unit, onNewP
             )
         }
         items(detail.items, key = { it.id }) { ExpenseRow(it, onClick = { onEdit(it) }) }
+        items(pending, key = { it.id }) { PendingRow(it, categoryNames[it.categoryId]) }
         item {
             HorizontalDivider()
             Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("Left", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
                 Text(
-                    Fmt.money(page.left),
+                    Fmt.money(left),
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
-                    color = if (page.left < 0) SamNegative else MaterialTheme.colorScheme.onSurface
+                    color = if (left < 0) SamNegative else MaterialTheme.colorScheme.onSurface
                 )
             }
         }
@@ -346,6 +401,18 @@ private fun ExpenseRow(expense: Expense, onClick: () -> Unit) {
             modifier = Modifier.padding(horizontal = 8.dp)
         )
         Text(Fmt.shortDate(expense.spentDate), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+/** An item saved on the phone but not yet on the server (not editable until it syncs). */
+@Composable
+private fun PendingRow(op: OutboxOp.AddExpense, category: String?) {
+    val dim = MaterialTheme.colorScheme.onSurfaceVariant
+    Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(Fmt.moneyCompact(op.amount), fontWeight = FontWeight.SemiBold, color = dim, modifier = Modifier.width(76.dp))
+        Text("${op.description} (syncing)", color = dim, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(category ?: "auto", style = MaterialTheme.typography.labelMedium, color = dim, modifier = Modifier.padding(horizontal = 8.dp))
+        Text(Fmt.shortDate(op.spentDate), style = MaterialTheme.typography.labelMedium, color = dim)
     }
 }
 

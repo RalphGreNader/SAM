@@ -8,6 +8,8 @@
   - Run: `dotnet run --launch-profile http` → `http://localhost:5297` (Development; uses `appsettings.Secrets.json`, which points at the production DB)
 - Never modify `TokenController`, `PasswordService`, the existing `AddJwtBearer` block or `email.cs` methods; device auth is the separate `Device` scheme.
 - Android app (this repo): Kotlin + Compose, package `com.samvedamanikam.sam`, manual DI in `AppContainer`, reusable auth in `auth/`.
+  - Widget (Glance) in `widget/`, quick-add/share dialogs in `quickadd/`, offline queue `data/Outbox.kt` sent by `sync/SyncWorker.kt` (WorkManager).
+  - Test the share target: `adb shell "am start -a android.intent.action.SEND -t text/plain --es android.intent.extra.TEXT 'Buy milk' -n com.samvedamanikam.sam/.quickadd.ShareReceiverActivity"`.
   - Use Android Studio's JDK: set `JAVA_HOME=C:\Program Files\Android\Android Studio\jbr` for command-line builds.
   - Build/test: `.\gradlew.bat assembleDebug testDebugUnitTest lintDebug` (release: `assembleRelease`, signed only when `keystore.properties` exists).
   - Emulator: AVD `Medium_Phone_API_37.0`; install with `%LOCALAPPDATA%\Android\Sdk\platform-tools\adb.exe install -r app\build\outputs\apk\debug\SAM-<version>-debug.apk`.

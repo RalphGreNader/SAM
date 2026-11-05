@@ -114,6 +114,15 @@ data class ExpenseSaveRequest(
 )
 
 @Serializable
+data class TodoSaveRequest(
+    @SerialName("TITLE") val title: String,
+    @SerialName("DUE_DATE") val dueDate: String? = null,
+    @SerialName("PRIORITY") val priority: Int = 0,
+    @SerialName("NOTES") val notes: String? = null,
+    @SerialName("SOURCE") val source: String? = "APP"
+)
+
+@Serializable
 data class QuickEntryRequest(
     @SerialName("TEXT") val text: String,
     @SerialName("SOURCE") val source: String? = "APP"

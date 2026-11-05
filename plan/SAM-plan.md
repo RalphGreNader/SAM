@@ -10,7 +10,8 @@ Add a SAM module to Helios-Engine.Core (todos, email-to-task ingestion from samh
 ## Status
 - Phase 1 (setup) done except DKIM.
 - **Phase 2 (backend core + device auth): done and deployed (2026-11-02).** DB scripts run, `DeviceAuth:JwtKey` set locally and on the server, regression checks passed. Helios changes are still **uncommitted**.
-- **Phase 3 (Android skeleton + Budget): built and tested on the emulator (2026-11-02).** See `phase-3-android.md`.
+- **Phase 3 (Android skeleton + Budget): done and committed (2026-11-02).** See `phase-3-android.md`.
+- **Phase 4 (widget, quick-add, share target, outbox): built (2026-11-04).** See `phase-4-widget.md`.
 - **2026-11-02:** pairing is now shared Helios **device auth** (`device-auth.md`): scheme `Device`, table `HELIOS_DEVICE`, routes `api/auth/device/*` with `APP=sam`, policy `app:sam`. The sections below are updated. Older mentions of `SamDevice`/`SAM_DEVICE` elsewhere refer to the same thing.
 - **Setup:**
   - [x] SmarterASP Schedule Tasks available (Premium plan).

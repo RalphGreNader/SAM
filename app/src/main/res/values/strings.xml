@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">SAM</string>
+    <string name="share_label">Add to SAM todos</string>
+    <string name="widget_description">Budget left, todos due today, and quick add</string>
 </resources>

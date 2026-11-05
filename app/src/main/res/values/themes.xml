@@ -8,6 +8,16 @@
         <item name="postSplashScreenTheme">@style/Theme.Sam</item>
     </style>
 
+    <!-- Quick-add / share dialogs: transparent window; Compose draws the dim scrim and the card -->
+    <style name="Theme.Sam.Translucent" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowAnimationStyle">@android:style/Animation.Dialog</item>
+    </style>
+
     <style name="Theme.Sam" parent="android:Theme.Material.NoActionBar">
         <item name="android:windowBackground">@color/sam_background</item>
         <item name="android:statusBarColor">@android:color/transparent</item>

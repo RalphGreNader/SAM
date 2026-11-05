@@ -1,5 +1,4 @@
 <resources>
     <color name="sam_background">#FF0F1115</color>
-    <color name="sam_accent">#FF26C6DA</color>
     <color name="sam_icon_background">#FFFFFFFF</color>
 </resources>

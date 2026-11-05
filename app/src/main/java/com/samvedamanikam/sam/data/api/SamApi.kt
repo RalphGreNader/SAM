@@ -53,4 +53,10 @@ interface SamApi {
 
     @GET("api/sam/budget/reports/yearly")
     suspend fun yearlyReport(): List<PeriodTotal>
+
+    @POST("api/sam/todos")
+    suspend fun addTodo(@Body body: TodoSaveRequest): Todo
+
+    @PUT("api/sam/todos/{id}/complete")
+    suspend fun completeTodo(@Path("id") id: Int): Todo
 }
