@@ -1,0 +1,16 @@
+<resources>
+    <!-- Splash (androidx.core.splashscreen); switches to Theme.Sam once the app is ready -->
+    <style name="Theme.Sam.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/sam_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher_foreground</item>
+        <!-- White circle behind the black-and-white koala on the dark splash -->
+        <item name="windowSplashScreenIconBackgroundColor">@color/sam_icon_background</item>
+        <item name="postSplashScreenTheme">@style/Theme.Sam</item>
+    </style>
+
+    <style name="Theme.Sam" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/sam_background</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+</resources>
